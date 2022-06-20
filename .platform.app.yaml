@@ -12,75 +12,87 @@ build:
   flavor: composer
 
 dependencies:
-    php:
-        composer/composer: '^2'
+  php:
+    composer/composer: '^2'
 
 # The relationships of the application with services or other applications.
 # The left-hand side is the name of the relationship as it will be exposed
 # to the application in the PLATFORM_RELATIONSHIPS variable. The right-hand
 # side is in the form `<service name>:<endpoint name>`.
 relationships:
-    database: 'mysqldb:mysql'
+  database: 'mysqldb:mysql'
 
 # The hooks that will be triggered when the package is deployed.
 hooks:
-    # Build hooks can modify the application files on disk but not access any services like databases.
-    # build: |
-    # Deploy hooks can access services but the file system is now read-only.
-    deploy: |
-        set -e
-        TOUPDATE=$(sed '2,$d' version.txt)
+  # Build hooks can modify the application files on disk but not access any services like databases.
+  # build: |
+  # Deploy hooks can access services but the file system is now read-only.
+  deploy: |
+    set -e
 
-        if [ ! -f var/writeable/installed.lock ]; then
-            rsync -a init/modules/ modules/
+    if [ [ -z "${ADMIN_EMAIL}" ] || [ -z "${ADMIN_PASSWORD}" ] ]; then
+        echo
+        echo "IMPORTANT: DEPLOY STEPS SKIPPED — REQUIRED ENVIRONMENT VARIABLES ARE MISSING"
+        echo
+        echo "Please run the following commands via the CLI:"
+        echo
+        echo 'platform variable:create -y -p <project> -e master --level environment --name env:ADMIN_EMAIL --value your@email.com'
+        echo 'platform variable:create -y -p <project> -e master --sensitive true --level environment --name env:ADMIN_PASSWORD --value yourpassword'
+        exit;
+    fi
+
+    TOUPDATE=$(sed '2,$d' version.txt)
+
+    if [ ! -f var/writeable/installed.lock ]; then
+        rsync -a init/modules/ modules/
+        rsync -a init/img/ img/
+        rsync -a init/config/ config/
+        rsync -a init/translations/ translations/
+        rsync -a init/resources-translations/ app/Resources/translations/
+        rsync -a init/app-config/ app/config/
+        rsync -a init/themes/ themes/
+        rsync -a init/admin-ps/import/ admin-ps/import/
+        rsync -a init/admin-ps/autoupgrade/ admin-ps/autoupgrade/
+        rsync -a init/admin-ps/backups/ admin-ps/backups/
+        rsync -a init/mails/ mails/
+        rsync -a init/download/ download/
+        rm -rf var/cache/*
+        cd install-fwp && php index_cli.php --db_server=database.internal --db_name=main --db_user=user --email=$ADMIN_EMAIL --password=$ADMIN_PASSWORD --rewrite=0 --ssl=1 --language=fr --country=fr --newsletter=0 --domain=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
+        cd && touch var/writeable/installed.lock; echo "${TOUPDATE}" > var/writeable/version.lock
+    elif [ -f var/writeable/version.lock ]; then
+        PROD=$(sed '2,$d' var/writeable/version.lock)
+        if [ ${TOUPDATE} != ${PROD} ]; then
             rsync -a init/img/ img/
             rsync -a init/config/ config/
             rsync -a init/translations/ translations/
             rsync -a init/resources-translations/ app/Resources/translations/
             rsync -a init/app-config/ app/config/
             rsync -a init/themes/ themes/
-            rsync -a init/admin-fwp/import/ admin-fwp/import/
-            rsync -a init/admin-fwp/autoupgrade/ admin-fwp/autoupgrade/
-            rsync -a init/admin-fwp/backups/ admin-fwp/backups/
+            rsync -a init/admin-ps/import/ admin-ps/import/
+            rsync -a init/admin-ps/autoupgrade/ admin-ps/autoupgrade/
+            rsync -a init/admin-ps/backups/ admin-ps/backups/
             rsync -a init/mails/ mails/
             rsync -a init/download/ download/
             rm -rf var/cache/*
-            cd install-fwp && php index_cli.php --db_server=database.internal --db_name=main --db_user=user --email=$ADMIN_EMAIL --password=$ADMIN_PASSWORD --rewrite=0 --ssl=1 --language=fr --country=fr --newsletter=0 --domain=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
-            cd && touch var/writeable/installed.lock; echo "${TOUPDATE}" > var/writeable/version.lock
-        elif [ -f var/writeable/version.lock ]; then
-            PROD=$(sed '2,$d' var/writeable/version.lock)
-            if [ ${TOUPDATE} != ${PROD} ]; then
-                rsync -a init/img/ img/
-                rsync -a init/config/ config/
-                rsync -a init/translations/ translations/
-                rsync -a init/resources-translations/ app/Resources/translations/
-                rsync -a init/app-config/ app/config/
-                rsync -a init/themes/ themes/
-                rsync -a init/admin-fwp/import/ admin-fwp/import/
-                rsync -a init/admin-fwp/autoupgrade/ admin-fwp/autoupgrade/
-                rsync -a init/admin-fwp/backups/ admin-fwp/backups/
-                rsync -a init/mails/ mails/
-                rsync -a init/download/ download/
-                rm -rf var/cache/*
-                cd install-fwp && php upgrade/upgrade.php
-                cd && touch var/writeable/updated-${TOUPDATE}.lock; echo "${TOUPDATE}" > var/writeable/version.lock
-            fi
+            cd install-fwp && php upgrade/upgrade.php
+            cd && touch var/writeable/updated-${TOUPDATE}.lock; echo "${TOUPDATE}" > var/writeable/version.lock
         fi
-        if [ $PLATFORM_BRANCH != 'master' ]; then
-            shop_url=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
+    fi
+    if [ $PLATFORM_BRANCH != 'master' ]; then
+        shop_url=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
+        rm -rf var/cache/*
+        mysql -h database.internal -u user -e "UPDATE ps_configuration SET value ='$shop_url' WHERE name='PS_SHOP_DOMAIN' OR name='PS_SHOP_DOMAIN_SSL';" main
+        mysql -h database.internal -u user -e "UPDATE ps_shop_url SET domain='$shop_url', domain_ssl='$shop_url';" main
+    fi;
+    if [ $PLATFORM_BRANCH = 'master' ] && [ -f var/writeable/installed.lock ]; then
+        shop_domain=$(mysql -sN -h database.internal -u user -e "select value from ps_configuration where name='PS_SHOP_DOMAIN';" main)
+        shop_url=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
+        if [ $shop_url != $shop_domain ]; then
             rm -rf var/cache/*
             mysql -h database.internal -u user -e "UPDATE ps_configuration SET value ='$shop_url' WHERE name='PS_SHOP_DOMAIN' OR name='PS_SHOP_DOMAIN_SSL';" main
             mysql -h database.internal -u user -e "UPDATE ps_shop_url SET domain='$shop_url', domain_ssl='$shop_url';" main
-        fi;
-        if [ $PLATFORM_BRANCH = 'master' ] && [ -f var/writeable/installed.lock ]; then
-            shop_domain=$(mysql -sN -h database.internal -u user -e "select value from ps_configuration where name='PS_SHOP_DOMAIN';" main)
-            shop_url=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
-            if [ $shop_url != $shop_domain ]; then
-                rm -rf var/cache/*
-                mysql -h database.internal -u user -e "UPDATE ps_configuration SET value ='$shop_url' WHERE name='PS_SHOP_DOMAIN' OR name='PS_SHOP_DOMAIN_SSL';" main
-                mysql -h database.internal -u user -e "UPDATE ps_shop_url SET domain='$shop_url', domain_ssl='$shop_url';" main
-            fi
         fi
+    fi
 
 # The size of the persistent disk of the application (in MB).
 disk: 2048
@@ -89,108 +101,108 @@ disk: 2048
 # The keys are directory paths relative to the application root. The values are a
 # mount definition. In this case, `web-files` is just a unique name for the mount.
 mounts:
-    'admin-fwp/import':
-        source: local
-        source_path: 'admin-fwp-import'
-    'admin-fwp/autoupgrade':
-        source: local
-        source_path: 'admin-fwp-autoupgrade'
-    'admin-fwp/backups':
-        source: local
-        source_path: 'admin-fwp-backups'
-    'admin-fwp/yaml':
-        source: local
-        source_path: 'admin-fwp-yaml'
-    'install-fwp/yaml':
-        source: local
-        source_path: 'install-fwp-yaml'
-    'mails':
-        source: local
-        source_path: 'mails'
-    'modules':
-        source: local
-        source_path: 'modules'
-    'translations':
-        source: local
-        source_path: 'translations'
-    'app/Resources/translations':
-        source: local
-        source_path: 'resources-translations'
-    'config':
-        source: local
-        source_path: 'config'
-    'app/config':
-        source: local
-        source_path: 'app-config'
-    'img':
-        source: local
-        source_path: 'img'
-    'upload':
-        source: local
-        source_path: 'upload'
-    'download':
-        source: local
-        source_path: 'download'
-    'var/cache':
-        source: local
-        source_path: 'var-cache'
-    'var/logs':
-        source: local
-        source_path: 'var-logs'
-    'var/sessions':
-        source: local
-        source_path: 'var-sessions'
-    'var/writeable':
-        source: local
-        source_path: 'var-writeable'
-    'themes':
-        source: local
-        source_path: 'themes'
-    'config-fwp':
-        source: local
-        source_path: 'config-fwp'
-    'yaml':
-        source: local
-        source_path: 'yaml'
+  'admin-ps/import':
+    source: local
+    source_path: 'admin-ps-import'
+  'admin-ps/autoupgrade':
+    source: local
+    source_path: 'admin-ps-autoupgrade'
+  'admin-ps/backups':
+    source: local
+    source_path: 'admin-ps-backups'
+  'admin-ps/yaml':
+    source: local
+    source_path: 'admin-ps-yaml'
+  'install-fwp/yaml':
+    source: local
+    source_path: 'install-fwp-yaml'
+  'mails':
+    source: local
+    source_path: 'mails'
+  'modules':
+    source: local
+    source_path: 'modules'
+  'translations':
+    source: local
+    source_path: 'translations'
+  'app/Resources/translations':
+    source: local
+    source_path: 'resources-translations'
+  'config':
+    source: local
+    source_path: 'config'
+  'app/config':
+    source: local
+    source_path: 'app-config'
+  'img':
+    source: local
+    source_path: 'img'
+  'upload':
+    source: local
+    source_path: 'upload'
+  'download':
+    source: local
+    source_path: 'download'
+  'var/cache':
+    source: local
+    source_path: 'var-cache'
+  'var/logs':
+    source: local
+    source_path: 'var-logs'
+  'var/sessions':
+    source: local
+    source_path: 'var-sessions'
+  'var/writeable':
+    source: local
+    source_path: 'var-writeable'
+  'themes':
+    source: local
+    source_path: 'themes'
+  'config-fwp':
+    source: local
+    source_path: 'config-fwp'
+  'yaml':
+    source: local
+    source_path: 'yaml'
 
 # The configuration of the application when it is exposed to the web.
 web:
-    locations:
-        '/':
-            # The public directory of the application relative to its root.
-            root: ''
-            # The front-controller script which determines where to send
-            # non-static requests.
-            passthru: '/index.php'
-            rules:
-                '\.(yml|log|tpl|twig|sass)$':
-                    scripts: false
-                    allow: false
-                '^/(app|bin|cache|classes|config|controllers|docs|localization|override|src|tests|tools|translations|travis-scripts|vendor|var|init|config-fwp)/':
-                    scripts: false
-                    allow: false
-                '^/img/\.php$':
-                    scripts: false
-                '^/upload/\.php$':
-                    scripts: false
+  locations:
+    '/':
+      # The public directory of the application relative to its root.
+      root: ''
+      # The front-controller script which determines where to send
+      # non-static requests.
+      passthru: '/index.php'
+      rules:
+        '\.(yml|log|tpl|twig|sass)$':
+          scripts: false
+          allow: false
+        '^/(app|bin|cache|classes|config|controllers|docs|localization|override|src|tests|tools|translations|travis-scripts|vendor|var|init|config-fwp)/':
+          scripts: false
+          allow: false
+        '^/img/\.php$':
+          scripts: false
+        '^/upload/\.php$':
+          scripts: false
 
-        '/admin-fwp':
-            # The public directory of the application relative to its root.
-            root: 'admin-fwp'
-            # The front-controller script which determines where to send
-            # non-static requests.
-            passthru: '/admin-fwp/index.php'
-            rules:
-                '^/admin-fwp/(backups|import)/':
-                    scripts: false
-                    allow: false
-        '/install-fwp':
-            root: 'install-fwp'
-            scripts: false
-            allow: false
+    '/admin-ps':
+      # The public directory of the application relative to its root.
+      root: 'admin-ps'
+      # The front-controller script which determines where to send
+      # non-static requests.
+      passthru: '/admin-ps/index.php'
+      rules:
+        '^/admin-ps/(backups|import)/':
+          scripts: false
+          allow: false
+    '/install-fwp':
+      root: 'install-fwp'
+      scripts: false
+      allow: false
 
 variables:
-    php:
-        memory_limit: 256M
-        post_max_size: 128M
-        upload_max_filesize: 128M
+  php:
+    memory_limit: 256M
+    post_max_size: 128M
+    upload_max_filesize: 128M
