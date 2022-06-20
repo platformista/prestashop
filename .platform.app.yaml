@@ -40,9 +40,9 @@ hooks:
         rsync -a init/resources-translations/ app/Resources/translations/
         rsync -a init/app-config/ app/config/
         rsync -a init/themes/ themes/
-        rsync -a init/admin-ps/import/ admin-ps/import/
-        rsync -a init/admin-ps/autoupgrade/ admin-ps/autoupgrade/
-        rsync -a init/admin-ps/backups/ admin-ps/backups/
+        rsync -a init/admin-fwp/import/ admin-fwp/import/
+        rsync -a init/admin-fwp/autoupgrade/ admin-fwp/autoupgrade/
+        rsync -a init/admin-fwp/backups/ admin-fwp/backups/
         rsync -a init/mails/ mails/
         rsync -a init/download/ download/
         rm -rf var/cache/*
@@ -57,9 +57,9 @@ hooks:
             rsync -a init/resources-translations/ app/Resources/translations/
             rsync -a init/app-config/ app/config/
             rsync -a init/themes/ themes/
-            rsync -a init/admin-ps/import/ admin-ps/import/
-            rsync -a init/admin-ps/autoupgrade/ admin-ps/autoupgrade/
-            rsync -a init/admin-ps/backups/ admin-ps/backups/
+            rsync -a init/admin-fwp/import/ admin-fwp/import/
+            rsync -a init/admin-fwp/autoupgrade/ admin-fwp/autoupgrade/
+            rsync -a init/admin-fwp/backups/ admin-fwp/backups/
             rsync -a init/mails/ mails/
             rsync -a init/download/ download/
             rm -rf var/cache/*
@@ -90,18 +90,18 @@ disk: 2048
 # The keys are directory paths relative to the application root. The values are a
 # mount definition. In this case, `web-files` is just a unique name for the mount.
 mounts:
-  'admin-ps/import':
+  'admin-fwp/import':
     source: local
-    source_path: 'admin-ps-import'
-  'admin-ps/autoupgrade':
+    source_path: 'admin-fwp-import'
+  'admin-fwp/autoupgrade':
     source: local
-    source_path: 'admin-ps-autoupgrade'
-  'admin-ps/backups':
+    source_path: 'admin-fwp-autoupgrade'
+  'admin-fwp/backups':
     source: local
-    source_path: 'admin-ps-backups'
-  'admin-ps/yaml':
+    source_path: 'admin-fwp-backups'
+  'admin-fwp/yaml':
     source: local
-    source_path: 'admin-ps-yaml'
+    source_path: 'admin-fwp-yaml'
   'install-fwp/yaml':
     source: local
     source_path: 'install-fwp-yaml'
@@ -175,14 +175,14 @@ web:
         '^/upload/\.php$':
           scripts: false
 
-    '/admin-ps':
+    '/admin-fwp':
       # The public directory of the application relative to its root.
-      root: 'admin-ps'
+      root: 'admin-fwp'
       # The front-controller script which determines where to send
       # non-static requests.
-      passthru: '/admin-ps/index.php'
+      passthru: '/admin-fwp/index.php'
       rules:
-        '^/admin-ps/(backups|import)/':
+        '^/admin-fwp/(backups|import)/':
           scripts: false
           allow: false
     '/install-fwp':
