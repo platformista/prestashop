@@ -30,17 +30,6 @@ hooks:
   deploy: |
     set -e
 
-    if [ [ -z "${ADMIN_EMAIL}" ] || [ -z "${ADMIN_PASSWORD}" ] ]; then
-        echo
-        echo "IMPORTANT: DEPLOY STEPS SKIPPED — REQUIRED ENVIRONMENT VARIABLES ARE MISSING"
-        echo
-        echo "Please run the following commands via the CLI:"
-        echo
-        echo 'platform variable:create -y -p <project> -e master --level environment --name env:ADMIN_EMAIL --value your@email.com'
-        echo 'platform variable:create -y -p <project> -e master --sensitive true --level environment --name env:ADMIN_PASSWORD --value yourpassword'
-        exit;
-    fi
-
     TOUPDATE=$(sed '2,$d' version.txt)
 
     if [ ! -f var/writeable/installed.lock ]; then
@@ -57,7 +46,7 @@ hooks:
         rsync -a init/mails/ mails/
         rsync -a init/download/ download/
         rm -rf var/cache/*
-        cd install-fwp && php index_cli.php --db_server=database.internal --db_name=main --db_user=user --email=$ADMIN_EMAIL --password=$ADMIN_PASSWORD --rewrite=0 --ssl=1 --language=fr --country=fr --newsletter=0 --domain=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
+        cd install-fwp && php index_cli.php --db_server=database.internal --db_name=main --db_user=user --email=admin@change.me --password=changeme --rewrite=0 --ssl=1 --language=en --country=fr --newsletter=0 --domain=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
         cd && touch var/writeable/installed.lock; echo "${TOUPDATE}" > var/writeable/version.lock
     elif [ -f var/writeable/version.lock ]; then
         PROD=$(sed '2,$d' var/writeable/version.lock)
@@ -78,13 +67,13 @@ hooks:
             cd && touch var/writeable/updated-${TOUPDATE}.lock; echo "${TOUPDATE}" > var/writeable/version.lock
         fi
     fi
-    if [ $PLATFORM_BRANCH != 'master' ]; then
+    if [ $PLATFORM_BRANCH != 'main' ]; then
         shop_url=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
         rm -rf var/cache/*
         mysql -h database.internal -u user -e "UPDATE ps_configuration SET value ='$shop_url' WHERE name='PS_SHOP_DOMAIN' OR name='PS_SHOP_DOMAIN_SSL';" main
         mysql -h database.internal -u user -e "UPDATE ps_shop_url SET domain='$shop_url', domain_ssl='$shop_url';" main
     fi;
-    if [ $PLATFORM_BRANCH = 'master' ] && [ -f var/writeable/installed.lock ]; then
+    if [ $PLATFORM_BRANCH = 'main' ] && [ -f var/writeable/installed.lock ]; then
         shop_domain=$(mysql -sN -h database.internal -u user -e "select value from ps_configuration where name='PS_SHOP_DOMAIN';" main)
         shop_url=$(echo $PLATFORM_ROUTES | base64 -d | jq 'keys[0]'|sed 's|https\?://||'|sed 's|/||'|sed 's|\"||g')
         if [ $shop_url != $shop_domain ]; then
